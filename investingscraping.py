@@ -103,9 +103,10 @@ try:
         events = wait.until(EC.presence_of_all_elements_located(
             (By.CSS_SELECTOR, "div.event-header")
         ))
+        elements = driver.find_elements(By.CSS_SELECTOR, "div.event-header")
 
         scraped_data = []
-        for event in events:
+        for event in elements:
             try:
                 # Get data-time attribute
                 data_time = event.get_attribute("data-time")
@@ -118,7 +119,7 @@ try:
                 # Extract main information from first div-table-row
                 first_row = event.find_element(By.CSS_SELECTOR, ".div-table-row:first-child")
                 time_element = first_row.find_element(By.CSS_SELECTOR, ".event-time")
-                title_element = first_row.find_element(By.CSS_SELECTOR, ".event-title a")
+                title_element = first_row.find_element(By.CSS_SELECTOR, ".event-title")
                 
                 # Extract details from second div-table-row
                 second_row = event.find_element(By.CSS_SELECTOR, ".div-table-row:nth-child(2)")
@@ -128,20 +129,58 @@ try:
 
                 event_data = {
                     "data_time": data_time,
-                    "time": time_element.text.strip(),
-                    "title": title_element.text.strip(),
+                    "time": time_element.text.strip() if time_element.text.strip() != "-" else "N/A",
+                    "title": title_element.text.strip() if title_element.text.strip() != "-" else "N/A",
                     "actual": actual_element.text.strip() if actual_element.text.strip() != "-" else "N/A",
-                    "forecast": forecast_element.text.strip(),
-                    "previous": previous_element.text.strip(),
-                    "country": event.get_attribute("data-country"),
-                    "is_breaking": event.get_attribute("data-breaking") == "true"
+                    "forecast": forecast_element.text.strip() if forecast_element.text.strip() != "-" else "N/A",
+                    "previous": previous_element.text.strip() if previous_element.text.strip() != "-" else "N/A",
                 }
                 
                 scraped_data.append(event_data)
+                # insert scraping result to db_cis
+                import mysql.connector
+
+                def insert_to_db(data):
+                    try:
+                        conn = mysql.connector.connect(
+                            host="localhost",
+                            user="root",        # Default XAMPP user
+                            password="",        # Default XAMPP password is empty
+                            database="db_cisscrapper"
+                        )
+                        cursor = conn.cursor()
+
+                        for item in data:
+                            try:
+                                cursor.execute("""
+                                    INSERT IGNORE INTO events (data_time, time_str, title, actual, forecast, previous)
+                                    VALUES (%s, %s, %s, %s, %s, %s)
+                                """, (
+                                    item["data_time"],
+                                    item["time"],
+                                    item["title"],
+                                    item["actual"],
+                                    item["forecast"],
+                                    item["previous"],
+                                ))
+                            except Exception as insert_error:
+                                print(f"Insert error: {insert_error}")
+                                continue
+
+                        conn.commit()
+                        print(f"{cursor.rowcount} rows inserted into DB.")
+                        cursor.close()
+                        conn.close()
+
+                    except mysql.connector.Error as db_err:
+                        print(f"Database error: {db_err}")
+
 
             except Exception as e:
                 print(f"Error processing event: {str(e)}")
                 continue
+        if scraped_data:
+            insert_to_db(scraped_data)
 
         print(f"\nFound {len(scraped_data)} events for {current_date}")
         
@@ -153,8 +192,6 @@ try:
             print(f"Actual: {event['actual']}")
             print(f"Forecast: {event['forecast']}")
             print(f"Previous: {event['previous']}")
-            print(f"Country: {event['country']}")
-            print(f"Breaking News: {event['is_breaking']}")
             print(f"Full Timestamp: {event['data_time']}")
 
     except Exception as e:
