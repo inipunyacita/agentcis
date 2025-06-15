@@ -8,6 +8,7 @@ from phi.model.xai import xAI
 from phi.tools.googlesearch import GoogleSearch
 from phi.tools.yfinance import YFinanceTools
 from fetch_latest_news import get_latest_news
+from investingscraping import scrape_to_db
 
 news_data = get_latest_news()
 
@@ -104,8 +105,33 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # Handle text messages (ticker inputs)
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    scrape_to_db()                # run scraper
+    news = get_latest_news()      # refresh data from DB
+
+    formatted = "\n\n".join([
+        f"- {item['data_time']} | {item['title']} | Actual: {item['actual']}, Forecast: {item['forecast']}, Previous: {item['previous']}"
+        for item in news
+    ])
+
+    instructions_text = f"""
+You are provided with the latest macroeconomic news scraped from FinancialJuice.
+Use the data to analyze sentiment, predict short-term and long-term impacts on Bitcoin, crypto markets, and risk-on assets.
+Consider the differences between actual and forecast values to identify surprising shifts.
+Base your outlook strictly on the data provided below.
+
+### NEWS DATA ###
+{formatted}
+
+Now summarize the macroeconomic outlook, risks, and price impact.
+"""
+
+    sentiment_by_financialjuices_agent.instructions = [instructions_text]
+
     ticker = update.message.text.strip().upper()
-    message = f"Analyze the recent performance and macro+micro outlook for {ticker}. Include any macroeconomic context and sentiment from the latest FinancialJuice data."
+    message = (
+        f"Analyze the recent performance and macro+micro outlook for {ticker}. "
+        "Include any macroeconomic context and sentiment from the latest FinancialJuice data."
+    )
 
     # Use your AI agent to analyze the ticker
     try:
